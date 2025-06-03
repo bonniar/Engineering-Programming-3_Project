@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-SgOJa3DmI69IUzQ2PVdRZhwQ+dy64/BUtbMJw1MZ8t5HZApcHrRKUc4W0kG879m7" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.0.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.2.0"></script>
+  <style>
+    h4{
+      text-align: center;
+      justify-content: center;
+      color: antiquewhite;
+    }
+    th,td{
+        padding: 10px;
+        border: 2px solid #ccc;
+      }
+      th{
+        background: #333;
+        color: white;
+      }
+  </style>
+</head>
+<body>
+    <section class="header">
+        
+    
+        <nav class="navbar navbar-expand-lg custom-navbar" style="background-color: rgba(2, 28, 36, 0.8) ">
+            <div class="container-fluid">
+                <a class="navbar-brand" href='/humdash'>Home</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarTogglerDemo02" aria-controls="navbarTogglerDemo02" aria-expanded="false" aria-label="Toggle navigation">
+                </button>
+                <div class="collapse navbar-collapse" id="navbarTogglerDemo02">
+                    <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                        
+                            
+                            
+                        
+                            <li class="nav-item">
+                              <a class="nav-link active" aria-current="page" href="/aboutdash">About Us</a>
+                            </li>
+
+                            <li class="nav-item">
+                                <a class="nav-link active" href="/logout">Logout</a>
+                              </li>
+                    </ul>
+                </div>
+              
+                
+              </div>
+            </div>
+          </nav>
+        <div class="h1_t">
+            
+                <span class="nav-link text-light">Welcome User: {{ session.use }}!</span>
+                
+                
+            
+        </div>
+        <h4 style="text-align: center;">You assigned sensor is Humidity </h4>
+        
+        <div>
+          <h3 style="color: white;"> Humidity Data:</h3> 
+          <div class="container-fluid dashboard-container">
+            
+            <div>
+              <h3 style="color: #ffffff;">Humidity table:</h3>
+            
+            <div class="data-table" ><!-- Data Table -->
+                <table id="sensorTable" style="background-color: antiquewhite;">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>💧 Humidity %</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+            </div>  
+          </div>
+            
+               <div style="padding-left: 15%;">   <!-- Combined Chart -->
+              <h3 style="color: #ffffff;">Humidity Trends:</h3>
+              <div class="graph">
+            
+                 <canvas id="sensorChart"></canvas>
+               </div> 
+            </div>
+          </div>
+       
+        <footer class="copyright-footer" style="background-color: black;">
+        <p>&copy; <span id="year"></span> Smart Home Automation & Security Systems. All rights reserved.</p>
+      </footer>
+
+      <script>
+        // Load required Chart.js dependencies
+        document.addEventListener('DOMContentLoaded', function() {
+          // Initialize chart
+          const ctx = document.getElementById('sensorChart').getContext('2d');
+          const sensorChart = new Chart(ctx, {
+            type: 'bar',
+            data: { datasets: [] }, // Start empty
+            options: {
+              responsive: true,
+              interaction: { mode: 'index', intersect: false },
+              scales: {
+                x: {
+                  type: 'time',
+                  time: {
+                    parser: 'yyyy-MM-dd HH:mm:ss',
+                    tooltipFormat: 'HH:mm:ss',
+                    displayFormats: { second: 'HH:mm:ss' }
+                  },
+                  title: { display: true, text: 'Time' }
+                },
+                
+                
+                  y1: { 
+                    type: 'linear', display: true, position: 'left', 
+                    title: { text: 'Humidity' }, grid: { drawOnChartArea: false }
+                  },
+                }
+              }
+            });
+              
+             // Configure datasets
+             sensorChart.data.datasets = [
+              { 
+                label: 'Humidity (%)',
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                borderWidth: 2,
+                yAxisID: 'y1',
+                tension: 0.1
+              }
+              ];
+
+              // Update data function with better error handling
+            async function updateData() {
+              try {
+                console.log('Fetching data...');
+                const response = await fetch('/data');
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const data = await response.json();
+                console.log('Received data:', data);
+                
+                // Update chart
+                sensorChart.data.labels = data.timestamps;
+                sensorChart.data.datasets[0].data = data.humidity.map((val, i) => ({ 
+                  x: data.timestamps[i], y: val 
+                }));
+
+                sensorChart.update();
+        
+                // Update table
+                const tbody = document.querySelector("#sensorTable tbody");
+                if (!tbody) throw new Error("Table body not found");
+                
+                tbody.innerHTML = data.raw_data.map(item => `
+                  <tr>
+                    <td>${item.timestamp || 'N/A'}</td>     
+                    <td>${item.humidity?.toFixed(1) || 'N/A'}</td>
+                  </tr>
+                `).join('');
+        
+              } catch (error) {
+                console.error('Error updating data:', error);
+                // Display error to user
+                alert(`Error loading data: ${error.message}`);
+              }
+            }
+        
+            // Initial load and periodic updates
+            updateData();
+            setInterval(updateData, 2000);
+          });
+        
+          // Set current year in footer
+          document.getElementById('year').textContent = new Date().getFullYear();
+        </script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js" integrity="sha384-k6d4wzSIapyDyv1kpU366/PK5hCdSbCRGRCMv+eplOQJWyd1fbcAu9OCUj5zNLiq" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js" integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.min.js" integrity="sha384-VQqxDN0EQCkWoxt/0vsQvZswzTHUVOImccYmSyhJTp7kGtPed0Qcx8rK9h9YEgx+" crossorigin="anonymous"></script> 
+
+    </section>
+</body>
+</html>

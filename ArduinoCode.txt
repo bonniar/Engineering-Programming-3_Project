@@ -1,0 +1,154 @@
+ #include <WiFi.h>
+#include <HTTPClient.h>
+#include <DHT.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <ArduinoJson.h>
+
+// Wi-Fi credentials
+const char* ssid = "Risana Bonnia's A05s";
+const char* password = "bonn!@23";
+
+// Flask server URL
+const char* serverName = "http://192.168.81.33:5000/upload";
+
+// Sensor pins
+#define INDOOR_LDR_PIN 39
+#define INDOOR_LED_PIN 26
+#define OUTDOOR_LDR_PIN 36
+#define OUTDOOR_LED_PIN 18
+#define PIR_PIN 13
+#define DHT_PIN 25
+#define GREEN_LED_PIN 17
+#define ONE_WIRE_BUS 27
+
+DHT dht(DHT_PIN, DHT22);
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+unsigned long motionStartTime = 0;
+bool motionActive = false;
+
+// Adjust these values for human detection:
+const int minMotionDuration = 250;  // Min time (ms) to confirm human motion
+const int cooldownPeriod = 500;     // No retriggering within 5 sec
+
+void setup() {
+  Serial.begin(115200);
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // Setup sensors
+  dht.begin();
+  sensors.begin();
+
+  pinMode(INDOOR_LDR_PIN, INPUT);
+  pinMode(INDOOR_LED_PIN, OUTPUT);
+  pinMode(OUTDOOR_LDR_PIN, INPUT);
+  pinMode(OUTDOOR_LED_PIN, OUTPUT);
+  pinMode(PIR_PIN, INPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+}
+
+void loop() {
+  String indoorStatus, outdoorStatus;
+
+  // Indoor Light
+  int indoorLDR = analogRead(INDOOR_LDR_PIN);
+  if (indoorLDR < 200) {
+    digitalWrite(INDOOR_LED_PIN, HIGH);
+    indoorStatus = "ON";
+  } else {
+    digitalWrite(INDOOR_LED_PIN, LOW);
+    indoorStatus = "OFF";
+  }
+  Serial.println("Indoor Light is " + indoorStatus);
+
+  // Outdoor Light
+  int outdoorLDR = analogRead(OUTDOOR_LDR_PIN);
+  if (outdoorLDR < 200) {
+    digitalWrite(OUTDOOR_LED_PIN, HIGH);
+    outdoorStatus = "ON";
+  } else {
+    digitalWrite(OUTDOOR_LED_PIN, LOW);
+    outdoorStatus = "OFF";
+  }
+  Serial.println("Outdoor Light is " + outdoorStatus);
+
+  //motion
+
+  int currentState = digitalRead(PIR_PIN);
+
+  if (currentState == HIGH && !motionActive) {
+    motionStartTime = millis();  // Record motion start time
+    motionActive = true;
+    Serial.println("Potential motion detected...");
+  }
+
+  if (motionActive) {
+    // Check if motion lasted long enough (human-like movement)
+    if (millis() - motionStartTime >= minMotionDuration) {
+      digitalWrite(GREEN_LED_PIN, HIGH);
+      Serial.println("HUMAN DETECTED!");
+      motionActive = false;
+      delay(cooldownPeriod);  // Prevent immediate retrigger
+      digitalWrite(GREEN_LED_PIN, LOW);
+    }
+
+    // If motion stops too soon, discard it (likely non-human)
+    if (currentState == LOW) {
+      motionActive = false;
+      Serial.println("Ignored (too short)");
+    }
+  }
+
+  // Temperature
+  sensors.requestTemperatures();
+  float temperature = sensors.getTempCByIndex(0);
+
+  // Humidity
+  float humidity = dht.readHumidity();
+  if (isnan(humidity)) humidity = -1;
+
+  // Send to server
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/json");
+
+    StaticJsonDocument<256> jsonDoc;
+    jsonDoc["indoors"] = indoorStatus;
+    jsonDoc["outdoors"] = outdoorStatus;
+    jsonDoc["motion"] = motionActive;
+    jsonDoc["temperature"] = temperature;
+    jsonDoc["humidity"] = humidity;
+
+    String jsonStr;
+    serializeJson(jsonDoc, jsonStr);
+
+    Serial.println("Sending JSON:");
+    Serial.println(jsonStr);
+
+    int responseCode = http.POST(jsonStr);
+    if (responseCode > 0) {
+      Serial.println("Server Response: " + http.getString());
+    } else {
+      Serial.print("POST Failed, Code: ");
+      Serial.println(responseCode);
+    }
+
+    http.end();
+    delay(5000);
+  }
+
+  delay(100);
+}
