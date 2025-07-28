@@ -64,8 +64,8 @@ def init_db():
     conn.close()
 
 # Telegram Bot Setup
-TELEGRAM_API_URL = "7427354955:AAGy0zyUFL9MxOOwCMXwKOZm4GFCH40rJcg"
-CHAT_IDS = ["7563238850", "7064929794", "5458249884"]
+TELEGRAM_API_URL = "8308158915:AAFiLNv48EO8HEXmQtmyH6G13Zlha2JDRoQ"
+CHAT_IDS = ["7064929794"]
 def send_telegram_message(message):
     for chat_id in CHAT_IDS:
         url = f"https://api.telegram.org/bot{TELEGRAM_API_URL}/sendMessage"
